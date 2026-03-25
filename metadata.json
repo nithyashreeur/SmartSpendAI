@@ -1,0 +1,5 @@
+{
+  "name": "SmartSpend AI",
+  "description": "An AI Financial Assistant that analyzes user expenses, detects overspending patterns, and provides intelligent, personalized financial advice.",
+  "requestFramePermissions": []
+}
