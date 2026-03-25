@@ -1,21 +1,35 @@
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { Upload, FileText, Send, Loader2, Image as ImageIcon, Sparkles, AlertCircle } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Button } from './components/ui/button';
-import { Textarea } from './components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
-import { Input } from './components/ui/input';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { 
+  Upload, FileText, Send, Loader2, Sparkles, AlertTriangle, 
+  Wallet, TrendingDown, TrendingUp, Minus, Lightbulb, 
+  PieChart, PiggyBank, Receipt, ArrowRight, CheckCircle2, X
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+interface AnalysisData {
+  totalSpending: number;
+  currency: string;
+  categoryBreakdown: { category: string; amount: number; percentage: number }[];
+  overspendingAlerts: { title: string; description: string; severity: 'high' | 'medium' }[];
+  aiInsights: {
+    weeklySummary: string;
+    highestCategory: string;
+    spendingTrend: 'increase' | 'decrease' | 'stable';
+    keyInsights: string[];
+  };
+  smartSuggestions: string[];
+  savingsPlan: string;
+}
 
 export default function App() {
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,7 +61,7 @@ export default function App() {
 
     setIsAnalyzing(true);
     setError(null);
-    setAnalysisResult(null);
+    setAnalysisData(null);
 
     try {
       const parts: any[] = [];
@@ -69,62 +83,72 @@ export default function App() {
       }
 
       const systemInstruction = `You are an AI Financial Assistant inside an application called "SmartSpend AI".
-Your role is to analyze user expenses, detect overspending patterns, and provide intelligent, personalized financial advice in a simple, friendly, and non-judgmental tone.
+Your role is to analyze user expenses, detect overspending patterns, and provide intelligent, personalized financial advice.
 
 INPUT FORMAT (AFTER PROCESSING):
-Convert all inputs into this format before analysis:
-Date | Category | Item | Amount
-
-IF INPUT IS RAW OCR TEXT (UNSTRUCTURED):
-1. Extract items and prices
-2. Assign suitable categories (Grocery, Snacks, Medical, Shopping, etc.)
-3. Add current date if not available
-4. Convert into structured format
+Convert all inputs into this format before analysis: Date | Category | Item | Amount
+If input is raw OCR text, extract items/prices, assign categories, and structure it.
 
 YOUR TASKS:
-1. EXPENSE CATEGORIZATION:
-- Classify each expense as: NEED (essential) or WANT (non-essential)
-- Display clearly in a table-like format
+1. Calculate total spending and determine the currency.
+2. Create a category breakdown with amounts and percentages.
+3. Detect overspending (impulse buying, repeated small expenses) and create alerts with severity ('high' or 'medium').
+4. Generate AI Insights: A brief weekly summary, the highest spending category, the spending trend ('increase', 'decrease', or 'stable' based on context), and 2-3 key behavioral insights.
+5. Provide 3-5 smart, actionable suggestions to reduce spending.
+6. Create a practical savings plan.
 
-2. SPENDING SUMMARY:
-- Calculate total spending
-- Show category-wise spending
-- Identify highest spending category
+TONE: Friendly, supportive, simple language, practical.`;
 
-3. OVERSPENDING ANALYSIS:
-- Detect unusual or excessive spending
-- Identify patterns like impulse buying, discount-driven purchases, repeated small expenses
-- Highlight with ⚠️ warnings
-
-4. BEHAVIOR INSIGHTS:
-- Explain WHY the user might be overspending
-- Use simple real-life reasoning (psychological + practical)
-
-5. SMART SUGGESTIONS:
-- Give 3–5 personalized tips to reduce spending
-- Suggest budget control strategies
-- Suggest better alternatives
-
-6. CREDIT RISK WARNING:
-- Predict if the user may depend on credit cards
-- Warn if spending seems higher than reasonable
-
-7. SAVINGS ADVICE:
-- Suggest how much the user can save
-- Provide a simple and practical savings plan
-
-OUTPUT FORMAT:
-Use clean sections with emojis exactly as follows:
-## 📊 Spending Summary
-## 🧾 Category Breakdown
-## ⚠️ Overspending Alerts
-## 🧠 Behavior Insight
-## 💡 Smart Suggestions
-## 💳 Credit Risk Warning
-## 💰 Savings Plan
-
-TONE: Friendly and supportive, simple language, practical and realistic advice.
-IMPORTANT RULES: Be accurate with calculations, do not assume missing data unless instructed (for OCR case only), keep output neat and structured, focus on helping user improve spending habits.`;
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          totalSpending: { type: Type.NUMBER },
+          currency: { type: Type.STRING, description: "Currency symbol, e.g., $, €, ₹" },
+          categoryBreakdown: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                category: { type: Type.STRING },
+                amount: { type: Type.NUMBER },
+                percentage: { type: Type.NUMBER }
+              },
+              required: ["category", "amount", "percentage"]
+            }
+          },
+          overspendingAlerts: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                severity: { type: Type.STRING, description: "'high' or 'medium'" }
+              },
+              required: ["title", "description", "severity"]
+            }
+          },
+          aiInsights: {
+            type: Type.OBJECT,
+            properties: {
+              weeklySummary: { type: Type.STRING },
+              highestCategory: { type: Type.STRING },
+              spendingTrend: { type: Type.STRING, description: "'increase', 'decrease', or 'stable'" },
+              keyInsights: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ["weeklySummary", "highestCategory", "spendingTrend", "keyInsights"]
+          },
+          smartSuggestions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          },
+          savingsPlan: { type: Type.STRING }
+        },
+        required: ["totalSpending", "currency", "categoryBreakdown", "overspendingAlerts", "aiInsights", "smartSuggestions", "savingsPlan"]
+      };
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
@@ -132,11 +156,14 @@ IMPORTANT RULES: Be accurate with calculations, do not assume missing data unles
         config: {
           systemInstruction,
           thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
         },
       });
 
       if (response.text) {
-        setAnalysisResult(response.text);
+        const parsedData = JSON.parse(response.text) as AnalysisData;
+        setAnalysisData(parsedData);
       } else {
         setError('No analysis could be generated. Please try again.');
       }
@@ -148,141 +175,355 @@ IMPORTANT RULES: Be accurate with calculations, do not assume missing data unles
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">SmartSpend AI</h1>
-          </div>
-        </div>
-      </header>
+  const TrendIcon = ({ trend }: { trend: string }) => {
+    if (trend === 'increase') return <TrendingUp className="w-5 h-5 text-red-500" />;
+    if (trend === 'decrease') return <TrendingDown className="w-5 h-5 text-emerald-500" />;
+    return <Minus className="w-5 h-5 text-slate-400" />;
+  };
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] relative overflow-hidden font-sans text-slate-900 selection:bg-violet-500/30">
+      {/* Subtle Gradient Background */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[800px] opacity-40 pointer-events-none z-0">
+        <div className="absolute inset-0 bg-gradient-to-b from-violet-300/40 to-transparent blur-[100px] rounded-full mix-blend-multiply" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-gradient-to-r from-blue-300/30 to-purple-300/30 blur-[80px] rounded-full mix-blend-multiply" />
+      </div>
+
+      <div className="relative z-10 flex flex-col min-h-screen max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+        
+        {/* Header */}
+        <header className="pt-20 pb-12 text-center max-w-2xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="inline-flex items-center justify-center p-3.5 bg-white rounded-2xl mb-6 text-violet-600 shadow-sm border border-slate-200/60"
+          >
+            <Sparkles className="w-8 h-8" />
+          </motion.div>
+          <motion.h1 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight mb-4"
+          >
+            SmartSpend AI
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-lg text-slate-500 font-medium"
+          >
+            Your intelligent financial companion. Analyze expenses, detect patterns, and optimize your budget.
+          </motion.p>
+        </header>
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Input Section */}
-          <div className="lg:col-span-5 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Input Expenses</CardTitle>
-                <CardDescription>
-                  Paste your expenses or upload a bill image for analysis.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Expense Text
-                  </label>
-                  <Textarea
-                    placeholder="e.g.&#10;12-03-2026 | Grocery | Vegetables | 500&#10;12-03-2026 | Snacks | Chips | 200"
+          {/* Input Column */}
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="lg:col-span-4 space-y-6 sticky top-8"
+          >
+            <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-violet-50 rounded-lg text-violet-600">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-800">Input Expenses</h2>
+              </div>
+              
+              <div className="space-y-5">
+                {/* Text Input */}
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 pt-4 pointer-events-none">
+                    <FileText className="h-5 w-5 text-slate-400 group-focus-within:text-violet-500 transition-colors" />
+                  </div>
+                  <textarea
+                    placeholder="Paste your expenses here...&#10;e.g. Grocery 500&#10;Snacks 200"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    className="min-h-[150px] resize-y font-mono text-sm"
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all duration-200 bg-slate-50/50 focus:bg-white resize-y min-h-[140px] text-sm text-slate-700 placeholder:text-slate-400 outline-none"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Upload className="w-4 h-4" />
-                    Upload Bill Image
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      ref={fileInputRef}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                  {imagePreview && (
-                    <div className="relative mt-4 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
-                      <img src={imagePreview} alt="Bill Preview" className="w-full h-auto max-h-48 object-contain" />
+                {/* Image Upload */}
+                <div>
+                  {!imagePreview ? (
+                    <div className="relative group cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        ref={fileInputRef}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 group-hover:bg-violet-50/50 group-hover:border-violet-300 transition-colors">
+                        <Upload className="w-6 h-6 text-slate-400 group-hover:text-violet-500 group-hover:-translate-y-1 transition-all duration-300 mb-2" />
+                        <p className="text-sm font-medium text-slate-600 group-hover:text-violet-600">Upload bill image</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm group">
+                      <img src={imagePreview} alt="Bill Preview" className="w-full h-32 object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity" />
                       <button
                         onClick={removeImage}
-                        className="absolute top-2 right-2 bg-slate-900/70 text-white p-1 rounded-full hover:bg-slate-900 transition-colors"
-                        title="Remove image"
+                        className="absolute top-2 right-2 bg-white/90 text-slate-700 p-1.5 rounded-full hover:bg-red-50 hover:text-red-600 hover:scale-110 transition-all shadow-sm"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   )}
                 </div>
 
-                {error && (
-                  <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-600 text-sm flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <p>{error}</p>
-                  </div>
-                )}
+                {/* Error State */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-start gap-2.5"
+                    >
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <p className="leading-relaxed">{error}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                <Button 
+                {/* Submit Button */}
+                <button 
                   onClick={analyzeExpenses} 
                   disabled={isAnalyzing || (!inputText.trim() && !selectedImage)}
-                  className="w-full gap-2"
+                  className="w-full h-12 flex items-center justify-center gap-2 text-base font-semibold text-white bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl hover:from-violet-700 hover:to-indigo-700 shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/30 transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none group"
                 >
                   {isAnalyzing ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       Analyzing...
                     </>
                   ) : (
                     <>
-                      <Send className="w-4 h-4" />
                       Analyze Expenses
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </>
                   )}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+                </button>
+              </div>
+            </div>
+          </motion.div>
 
-          {/* Output Section */}
-          <div className="lg:col-span-7">
-            <Card className="h-full min-h-[500px] flex flex-col">
-              <CardHeader className="border-b border-slate-100 bg-slate-50/50 rounded-t-xl">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-blue-600" />
-                  AI Analysis
-                </CardTitle>
-                <CardDescription>
-                  Your personalized financial insights will appear here.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 p-0">
-                {isAnalyzing ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 p-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                    <p className="text-sm font-medium animate-pulse">Processing your expenses...</p>
-                  </div>
-                ) : analysisResult ? (
-                  <div className="p-6 prose prose-slate max-w-none prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-slate-100 first:prose-h2:mt-0 prose-p:text-slate-600 prose-li:text-slate-600 prose-table:w-full prose-th:bg-slate-50 prose-th:p-2 prose-th:text-left prose-td:p-2 prose-td:border-t prose-td:border-slate-100">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {analysisResult}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 p-12 text-center">
-                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-2">
-                      <ImageIcon className="w-8 h-8 text-slate-300" />
+          {/* Output Column */}
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="lg:col-span-8"
+          >
+            <AnimatePresence mode="wait">
+              {isAnalyzing ? (
+                <motion.div 
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="h-[500px] flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm rounded-[24px] border border-slate-200/50 shadow-sm"
+                >
+                  <div className="relative mb-6">
+                    <div className="absolute inset-0 bg-violet-400 rounded-full blur-xl animate-pulse opacity-40" />
+                    <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center relative z-10">
+                      <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
                     </div>
-                    <p className="text-sm">Upload a bill or paste your expenses to get started.</p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Analyzing your finances</h3>
+                  <p className="text-slate-500">Extracting data and generating smart insights...</p>
+                </motion.div>
+              ) : analysisData ? (
+                <motion.div 
+                  key="results"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-6"
+                >
+                  {/* Top Row: Total & Insights */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Total Spending Card */}
+                    <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <Wallet className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-semibold text-slate-700">Total Spending</h3>
+                      </div>
+                      <div className="text-4xl font-extrabold text-slate-900 mb-2">
+                        {analysisData.currency}{analysisData.totalSpending.toLocaleString()}
+                      </div>
+                      <p className="text-sm text-slate-500">Analyzed from your provided data</p>
+                    </div>
+
+                    {/* AI Insights Card */}
+                    <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-violet-50 rounded-lg text-violet-600">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <h3 className="font-semibold text-slate-700">AI Insights</h3>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 rounded-full border border-slate-100">
+                          <TrendIcon trend={analysisData.aiInsights.spendingTrend} />
+                          <span className="text-xs font-medium text-slate-600 capitalize">{analysisData.aiInsights.spendingTrend} Trend</span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                        {analysisData.aiInsights.weeklySummary}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {analysisData.aiInsights.keyInsights.map((insight, idx) => (
+                          <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-md bg-violet-50 text-violet-700 text-xs font-medium border border-violet-100">
+                            {insight}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Breakdown & Alerts */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Category Breakdown */}
+                    <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                          <PieChart className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-semibold text-slate-700">Category Breakdown</h3>
+                      </div>
+                      <div className="space-y-4">
+                        {analysisData.categoryBreakdown.map((cat, idx) => (
+                          <div key={idx}>
+                            <div className="flex justify-between text-sm mb-1.5">
+                              <span className="font-medium text-slate-700">{cat.category}</span>
+                              <span className="text-slate-500">{analysisData.currency}{cat.amount} ({cat.percentage}%)</span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${cat.percentage}%` }}
+                                transition={{ duration: 1, delay: 0.2 + (idx * 0.1) }}
+                                className={`h-full rounded-full ${
+                                  cat.category === analysisData.aiInsights.highestCategory 
+                                    ? 'bg-indigo-500' 
+                                    : 'bg-slate-300'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Overspending Alerts */}
+                    <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-orange-50 rounded-lg text-orange-600">
+                          <AlertTriangle className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-semibold text-slate-700">Overspending Alerts</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {analysisData.overspendingAlerts.length > 0 ? (
+                          analysisData.overspendingAlerts.map((alert, idx) => (
+                            <div 
+                              key={idx} 
+                              className={`p-4 rounded-xl border ${
+                                alert.severity === 'high' 
+                                  ? 'bg-red-50/50 border-red-100' 
+                                  : 'bg-orange-50/50 border-orange-100'
+                              }`}
+                            >
+                              <h4 className={`text-sm font-semibold mb-1 ${
+                                alert.severity === 'high' ? 'text-red-700' : 'text-orange-700'
+                              }`}>
+                                {alert.title}
+                              </h4>
+                              <p className={`text-sm leading-relaxed ${
+                                alert.severity === 'high' ? 'text-red-600/80' : 'text-orange-600/80'
+                              }`}>
+                                {alert.description}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2 p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <p className="text-sm font-medium">No overspending detected. Great job!</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Suggestions & Savings */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Smart Suggestions */}
+                    <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                          <Lightbulb className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-semibold text-slate-700">Smart Suggestions</h3>
+                      </div>
+                      <ul className="space-y-3">
+                        {analysisData.smartSuggestions.map((suggestion, idx) => (
+                          <li key={idx} className="flex items-start gap-3">
+                            <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                            <p className="text-sm text-slate-600 leading-relaxed">{suggestion}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Savings Plan */}
+                    <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-[24px] shadow-md border border-violet-500 p-6 text-white hover:-translate-y-1 transition-transform duration-300">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                          <PiggyBank className="w-5 h-5 text-white" />
+                        </div>
+                        <h3 className="font-semibold text-white">Savings Plan</h3>
+                      </div>
+                      <p className="text-sm text-violet-100 leading-relaxed">
+                        {analysisData.savingsPlan}
+                      </p>
+                    </div>
+                  </div>
+
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="h-[500px] flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm rounded-[24px] border border-slate-200/50 border-dashed"
+                >
+                  <div className="w-20 h-20 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center mb-6">
+                    <PieChart className="w-10 h-10 text-slate-300" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-700 mb-2">No expenses yet</h3>
+                  <p className="text-slate-500 max-w-sm text-center">
+                    Add your data on the left to get personalized AI insights and a smart savings plan.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
         </div>
-      </main>
+      </div>
     </div>
   );
 }
